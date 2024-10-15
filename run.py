@@ -121,9 +121,12 @@ def main(rank, world_size, args):
     model.load_state_dict(state_dict, strict=True)
 
     model = model.to(device)
-    model = DDP(model, device_ids=[rank])
+    if world_size > 1:
+        model = DDP(model, device_ids=[rank])
+    else:
+        model = model.module  
     if IS_FLEXICUBES:
-        model.module.init_flexicubes_geometry(device, fovy=30.0)
+        model.init_flexicubes_geometry(device, fovy=30.0)
     model.eval()
 
     # make output directories
@@ -208,13 +211,13 @@ def main(rank, world_size, args):
 
         with torch.no_grad():
             # get triplane
-            planes = model.forward_planes(images, input_cameras)
+            planes = model.module.forward_planes(images, input_cameras)
 
             # get mesh
             mesh_path_idx = os.path.join(mesh_path, f'{name}.obj')
 
             try:
-                mesh_out = model.extract_mesh(
+                mesh_out = model.module.extract_mesh(
                     planes,
                     use_texture_map=args.export_texmap,
                     **infer_config,
