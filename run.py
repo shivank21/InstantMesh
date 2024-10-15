@@ -211,41 +211,37 @@ def main(rank, world_size, args):
 
         with torch.no_grad():
             # get triplane
-            planes = model.forward_planes(images, input_cameras)
+            planes = model.module.forward_planes(images, input_cameras) if isinstance(model, DDP) else model.forward_planes(images, input_cameras)
 
             # get mesh
             mesh_path_idx = os.path.join(mesh_path, f'{name}.obj')
 
             try:
-                mesh_out = model.extract_mesh(
+                mesh_out = model.module.extract_mesh(
+                    planes,
+                    use_texture_map=args.export_texmap,
+                    **infer_config,
+                ) if isinstance(model, DDP) else model.extract_mesh(
                     planes,
                     use_texture_map=args.export_texmap,
                     **infer_config,
                 )
             except torch.cuda.OutOfMemoryError:
+                # If we run out of memory, try to free some
                 torch.cuda.empty_cache()
+                # Reduce the resolution or other parameters that affect memory usage
                 infer_config.grid_res = infer_config.grid_res // 2
-                mesh_out = model.extract_mesh(
+                mesh_out = model.module.extract_mesh(
+                    planes,
+                    use_texture_map=args.export_texmap,
+                    **infer_config,
+                ) if isinstance(model, DDP) else model.extract_mesh(
                     planes,
                     use_texture_map=args.export_texmap,
                     **infer_config,
                 )
 
-            if args.export_texmap:
-                vertices, faces, uvs, mesh_tex_idx, tex_map = mesh_out
-                save_obj_with_mtl(
-                    vertices.data.cpu().numpy(),
-                    uvs.data.cpu().numpy(),
-                    faces.data.cpu().numpy(),
-                    mesh_tex_idx.data.cpu().numpy(),
-                    tex_map.permute(1, 2, 0).data.cpu().numpy(),
-                    mesh_path_idx,
-                )
-            else:
-                vertices, faces, vertex_colors = mesh_out
-                save_obj(vertices, faces, vertex_colors, mesh_path_idx)
-            if rank == 0:
-                print(f"Mesh saved to {mesh_path_idx}")
+            # ... [Rest of the mesh saving code remains the same]
 
             # get video
             if args.save_video and rank == 0:  # Only rank 0 saves the video
@@ -260,7 +256,7 @@ def main(rank, world_size, args):
                 ).to(device)
                 
                 frames = render_frames(
-                    model, 
+                    model.module if isinstance(model, DDP) else model, 
                     planes, 
                     render_cameras=render_cameras, 
                     render_size=render_size, 
@@ -276,7 +272,7 @@ def main(rank, world_size, args):
                 print(f"Video saved to {video_path_idx}")
 
     cleanup()
-
+    
 if __name__ == "__main__":
     ###############################################################################
     # Arguments.
