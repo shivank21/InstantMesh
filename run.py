@@ -207,12 +207,12 @@ def main(rank, world_size, args):
 
         with torch.no_grad():
             # get triplane
-            planes = model.forward_planes(images, input_cameras)
+            planes = model.module.forward_planes(images, input_cameras)
 
             # get mesh
             mesh_path_idx = os.path.join(mesh_path, f'{name}.obj')
 
-            mesh_out = model.extract_mesh(
+            mesh_out = model.module.extract_mesh(
                 planes,
                 use_texture_map=args.export_texmap,
                 **infer_config,
@@ -245,7 +245,7 @@ def main(rank, world_size, args):
                 ).to(device)
                 
                 frames = render_frames(
-                    model, 
+                    model.module, 
                     planes, 
                     render_cameras=render_cameras, 
                     render_size=render_size, 
@@ -259,7 +259,8 @@ def main(rank, world_size, args):
                     fps=30,
                 )
                 print(f"Video saved to {video_path_idx}")
-                cleanup()
+
+    cleanup()
 
 if __name__ == "__main__":
     ###############################################################################
