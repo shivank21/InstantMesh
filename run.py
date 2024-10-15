@@ -76,7 +76,13 @@ def setup(rank, world_size):
 def cleanup():
     dist.destroy_process_group()
 
-def main():
+def main(rank, world_size, args):
+    config = OmegaConf.load(args.config)
+    config_name = os.path.basename(args.config).replace('.yaml', '')
+    model_config = config.model_config
+    infer_config = config.infer_config
+
+    IS_FLEXICUBES = True if config_name.startswith('instant-mesh') else False
     setup(rank, world_size)
     device = torch.device(f'cuda:{rank}')
     print(f'GPU {rank}: Loading diffusion model ...')
@@ -278,12 +284,7 @@ if __name__ == "__main__":
     # Stage 0: Configuration.
     ###############################################################################
 
-    config = OmegaConf.load(args.config)
-    config_name = os.path.basename(args.config).replace('.yaml', '')
-    model_config = config.model_config
-    infer_config = config.infer_config
 
-    IS_FLEXICUBES = True if config_name.startswith('instant-mesh') else False
 
     device = torch.device('cuda')
     
