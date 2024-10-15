@@ -195,7 +195,8 @@ def main(rank, world_size, args):
 
     for idx, sample in enumerate(outputs):
         name = sample['name']
-        print(f'[{idx+1}/{len(outputs)}] Creating {name} ...')
+        if rank == 0:
+            print(f'[{idx+1}/{len(outputs)}] Creating {name} ...')
 
         images = sample['images'].unsqueeze(0).to(device)
         images = v2.functional.resize(images, 320, interpolation=3, antialias=True).clamp(0, 1)
@@ -207,16 +208,26 @@ def main(rank, world_size, args):
 
         with torch.no_grad():
             # get triplane
-            planes = model.module.forward_planes(images, input_cameras)
+            planes = model.forward_planes(images, input_cameras)
 
             # get mesh
             mesh_path_idx = os.path.join(mesh_path, f'{name}.obj')
 
-            mesh_out = model.module.extract_mesh(
-                planes,
-                use_texture_map=args.export_texmap,
-                **infer_config,
-            )
+            try:
+                mesh_out = model.extract_mesh(
+                    planes,
+                    use_texture_map=args.export_texmap,
+                    **infer_config,
+                )
+            except torch.cuda.OutOfMemoryError:
+                torch.cuda.empty_cache()
+                infer_config.grid_res = infer_config.grid_res // 2
+                mesh_out = model.extract_mesh(
+                    planes,
+                    use_texture_map=args.export_texmap,
+                    **infer_config,
+                )
+
             if args.export_texmap:
                 vertices, faces, uvs, mesh_tex_idx, tex_map = mesh_out
                 save_obj_with_mtl(
@@ -230,10 +241,11 @@ def main(rank, world_size, args):
             else:
                 vertices, faces, vertex_colors = mesh_out
                 save_obj(vertices, faces, vertex_colors, mesh_path_idx)
-            print(f"Mesh saved to {mesh_path_idx}")
+            if rank == 0:
+                print(f"Mesh saved to {mesh_path_idx}")
 
             # get video
-            if args.save_video:
+            if args.save_video and rank == 0:  # Only rank 0 saves the video
                 video_path_idx = os.path.join(video_path, f'{name}.mp4')
                 render_size = infer_config.render_resolution
                 render_cameras = get_render_cameras(
@@ -245,7 +257,7 @@ def main(rank, world_size, args):
                 ).to(device)
                 
                 frames = render_frames(
-                    model.module, 
+                    model, 
                     planes, 
                     render_cameras=render_cameras, 
                     render_size=render_size, 
@@ -289,5 +301,6 @@ if __name__ == "__main__":
 
     device = torch.device('cuda')
     
-    world_size = 2  # Number of GPUs
+    world_size = torch.cuda.device_count() 
+    print(world_size)
     mp.spawn(main, args=(world_size, args), nprocs=world_size, join=True)
