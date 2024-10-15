@@ -211,13 +211,13 @@ def main(rank, world_size, args):
 
         with torch.no_grad():
             # get triplane
-            planes = model.module.forward_planes(images, input_cameras)
+            planes = model.forward_planes(images, input_cameras)
 
             # get mesh
             mesh_path_idx = os.path.join(mesh_path, f'{name}.obj')
 
             try:
-                mesh_out = model.module.extract_mesh(
+                mesh_out = model.extract_mesh(
                     planes,
                     use_texture_map=args.export_texmap,
                     **infer_config,
